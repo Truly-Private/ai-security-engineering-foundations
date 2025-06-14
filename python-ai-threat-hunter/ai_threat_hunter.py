@@ -2,14 +2,22 @@
 
 import asyncio
 import json
+import sys
 from typing import List, Dict, Any, Set, Optional
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import logging
+import argparse
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Print separator function for better console output
+def print_separator(title=None):
+    width = 80
+    if title:
+        print(f"\n{'-' * 10} {title} {'-' * (width - 12 - len(title))}\n")
 
 class MockTransformersPipeline:
     def __init__(self, task: str, model: str, device: int = -1):
@@ -105,6 +113,7 @@ class ThreatPattern:
 class AIThreatHunter:
     def __init__(self, model_name: str = "mock/foundation-sec-8b-mock"):
         logger.info(f"Initializing AIThreatHunter with model: {model_name}")
+        print(f"\n[+] Initializing AI Threat Hunter with model: {model_name}")
         self.security_llm = MockTransformersPipeline(
             task="text-generation",
             model=model_name,
@@ -112,20 +121,25 @@ class AIThreatHunter:
         )
         self.known_patterns: List[ThreatPattern] = []
         logger.info("AIThreatHunter initialized. Known patterns: 0")
+        print("[+] AI Threat Hunter initialized and ready for analysis")
 
     async def analyze_network_logs(self, log_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze network logs for threat patterns"""
         if not log_entries:
             logger.warning("No log entries to analyze.")
+            print("[!] Warning: No log entries provided for analysis")
             return self._empty_analysis_result()
 
         logger.info(f"Analyzing {len(log_entries)} network log entries...")
+        print_separator("Analysis Started")
+        print(f"[+] Analyzing {len(log_entries)} network log entries...")
         
         try:
             log_summary = self._prepare_log_context(log_entries)
             analysis_prompt = self._build_analysis_prompt(log_summary)
             
             logger.info("Sending prompt to mock LLM for threat analysis...")
+            print("[+] Sending network log data to AI for threat analysis...")
             response = self.security_llm(
                 analysis_prompt,
                 max_length=700,
@@ -135,15 +149,18 @@ class AIThreatHunter:
 
             raw_ai_response = response[0]['generated_text']
             logger.info("Received raw analysis from mock LLM.")
+            print("[+] Received analysis response from AI model")
 
             threat_analysis = self._parse_ai_response(raw_ai_response, log_summary)
             await self._update_threat_patterns(threat_analysis, log_entries)
 
             logger.info("Log analysis complete.")
+            print("[+] Log analysis complete")
             return threat_analysis
             
         except Exception as e:
             logger.error(f"Error during log analysis: {e}")
+            print(f"[!] Error during log analysis: {e}")
             return self._error_analysis_result(str(e))
 
     def _empty_analysis_result(self) -> Dict[str, Any]:
@@ -338,6 +355,17 @@ Example of expected thought process: "The sequence of SMB probes on multiple hos
         parsed_data["recommended_actions"] = [item for item in parsed_data["recommended_actions"] if item]
 
         logger.info(f"Parsed AI response. Risk level: {parsed_data['risk_level']}, Threats: {parsed_data['threats_detected']}")
+        
+        print_separator("Analysis Results")
+        print(f"[+] Primary Vector: {parsed_data['primary_vector']}")
+        print(f"[+] Risk Level: {parsed_data['risk_level']}")
+        print(f"[+] Threats Detected: {', '.join(parsed_data['threats_detected'])}")
+        print("\n[+] Recommended Actions:")
+        for action in parsed_data['recommended_actions']:
+            print(f"    - {action}")
+        
+        print("\n[+] Narrative Summary:")
+        print(f"    {parsed_data['narrative_summary']}\n")
         return parsed_data
 
     async def _update_threat_patterns(self, analysis: Dict[str, Any], log_entries: List[Dict[str, Any]]):
@@ -365,10 +393,13 @@ Example of expected thought process: "The sequence of SMB probes on multiple hos
                 self._update_existing_pattern(existing_pattern, analysis)
             else:
                 await self._create_new_pattern(primary_vector, description, analysis, log_entries)
+                print(f"[+] New threat pattern created: {new_pattern_signature}")
         else:
             logger.info(f"Analysis did not meet threshold for learning (Risk: {analysis.get('risk_level', 0.0)} < {LEARNING_THRESHOLD}), or no valid/specific threats detected.")
+            print(f"[i] Analysis did not meet threshold ({LEARNING_THRESHOLD}) for learning new threat patterns")
 
         logger.info(f"Total learned patterns: {len(self.known_patterns)}")
+        print(f"[i] Total learned threat patterns in database: {len(self.known_patterns)}")
 
     def _find_existing_pattern(self, signature: str) -> Optional[ThreatPattern]:
         """Find existing pattern by signature"""
@@ -399,9 +430,10 @@ Example of expected thought process: "The sequence of SMB probes on multiple hos
         pattern.detection_count += 1
         pattern.last_seen = datetime.now()
         logger.info(f"Updated existing threat pattern: {pattern}")
+        print(f"[+] Updated existing threat pattern: {pattern}")
 
-    async def _create_new_pattern(self, primary_vector: str, description: str, analysis: Dict[str, Any], log_entries: List[Dict[str, Any]]):
-        """Create new threat pattern"""
+    async def _create_new_pattern(self, primary_vector: str, description: str, analysis: Dict[str, Any], log_entries: List[Dict[str, Any]]):  
+        """Create a new threat pattern from analysis"""
         pattern_id = f"pattern_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{len(self.known_patterns) + 1}"
         indicators = self._extract_indicators(log_entries, analysis.get('threats_detected', []))
 
@@ -450,5 +482,62 @@ Example of expected thought process: "The sequence of SMB probes on multiple hos
     def export_patterns(self) -> List[Dict[str, Any]]:
         """Export patterns as dictionaries"""
         return [pattern.to_dict() for pattern in self.known_patterns]
+
+# Add a main function that can be executed directly
+async def run_sample_analysis():
+    """Run a sample analysis with mock network logs"""
+    print_separator("AI Threat Hunter Demo")
+    print("[i] Starting sample threat analysis with mock network log data")
+    
+    # Sample network logs for demonstration
+    sample_logs = [
+        {
+            "timestamp": "2023-06-01T12:34:56",
+            "source_ip": "192.168.1.100",
+            "dest_ip": "192.168.1.5",
+            "dest_port": 445,  # SMB port
+            "protocol": "TCP",
+            "action": "allowed"
+        },
+        {
+            "timestamp": "2023-06-01T12:35:20",
+            "source_ip": "192.168.1.100",
+            "dest_ip": "192.168.1.5",
+            "dest_port": 3389,  # RDP port
+            "protocol": "TCP",
+            "action": "allowed"
+        }
+    ]
+    
+    # Initialize the threat hunter
+    threat_hunter = AIThreatHunter()
+    
+    # Run the analysis
+    analysis_result = await threat_hunter.analyze_network_logs(sample_logs)
+    
+    return analysis_result
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="AI Threat Hunter - Detect security threats in network logs")
+    parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    parser.add_argument("--quiet", action="store_true", help="Suppress console output except for results")
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    if args.quiet:
+        # Suppress print output and only show critical logs
+        print = lambda *a, **k: None
+        logging.basicConfig(level=logging.ERROR)
+    
+    analysis_result = asyncio.run(run_sample_analysis())
+    
+    if args.json:
+        # Print just the JSON result
+        print_separator("JSON Output")
+        print(json.dumps(analysis_result, indent=2, default=str))
+    
+    print_separator("Analysis Complete")
 
 # End of ai_threat_hunter.py
